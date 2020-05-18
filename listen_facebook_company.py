@@ -5,18 +5,18 @@ import time
 import pickle
 import random
 
-REDIS_HOST = '114.55.24.36'
-REDIS_PORT = 6379
-REDIS_PASS = 'Fttx2018*'
-item_key = 'facebookCompany:company_list'
-REDIS_DB = 3
+REDIS_HOST = ''
+REDIS_PORT = ''
+REDIS_PASS = ''
+item_key = ''
+REDIS_DB = ''
 
-MYSQL_HOST = '47.99.185.43'
-MYSQL_PORT = 3306
-MYSQL_PASS = '00e05611e8f68d6e9c9cc62f'
-MYSQL_DB = 'joinf_data'
-MYSQL_USER = 'root'
-MYSQL_TABLE = 'facebookCompany_20200515'
+MYSQL_HOST = ''
+MYSQL_PORT = ''
+MYSQL_PASS = ''
+MYSQL_DB = ''
+MYSQL_USER = ''
+MYSQL_TABLE = ''
 
 
 class Redis_Listen(object):
