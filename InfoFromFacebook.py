@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import json
 import re
 import time
 from urllib.parse import urljoin, urlparse, unquote
@@ -7,95 +6,37 @@ import redis
 import chardet
 import scrapy
 from ..items import InfofromfacebookspiderItem
-from ..settings import REDIS_HOST, REDIS_PORT, REDIS_DB, REDIS_PASS, REDIS_KEY, REDIS_KEY_COM
+from ..settings import REDIS_HOST, REDIS_PORT, REDIS_DB, REDIS_PASS, REDIS_KEY, REDIS_KEY_COM, REDIS_KEY_CAT
 
 class InfoFromFacebookSpider(scrapy.Spider):
     name = 'InfoFromFacebook'
     redis_server = redis.Redis(REDIS_HOST, REDIS_PORT, REDIS_DB, REDIS_PASS, decode_responses=True)
 
     def start_requests(self):
+        # 爬取分类
+        cat_num = self.redis_server.scard(REDIS_KEY_CAT)
         # 爬取详情
         com_num = self.redis_server.scard(REDIS_KEY)
         if com_num != 0:
             while com_num != 0:
+                if not cat_num:
+                    start_urls = 'https://www.facebook.com/pages/category/'
+                    yield scrapy.Request(start_urls, callback = self.parse_cat)
+                    break
+                else:
+                    if com_num < 10000:
+                        print('######## 原有%d个分类'%cat_num)
+                        cat_url = self.redis_server.spop(REDIS_KEY_CAT)
+                        print('##### 当前爬取的分类url为：%s' % cat_url)
+                        yield scrapy.Request(cat_url, callback=self.parse_com)
                 print('######## 原有%d个公司主页'%com_num)
                 com_url = self.redis_server.spop(REDIS_KEY)
                 print('##### 当前爬取的公司url为：%s' % com_url)
                 yield scrapy.Request(com_url, callback=self.parse)
                 com_num = self.redis_server.scard(REDIS_KEY)
+                cat_num = self.redis_server.scard(REDIS_KEY_CAT)
         # 测试专用
         # yield scrapy.Request('https://www.facebook.com/iffcokisan/', callback = self.parse)
-
-    #爬取分类url
-    def parse_cat(self, response):
-        div_list = response.xpath('//h1[text()="All Categories"]/following-sibling::div/div[@class="_717a"]')
-        for div in div_list:
-            pcid = div.xpath('string(.)').extract_first()
-            pcid = pcid.strip()
-            pcid_href = div.xpath('.//a/@href').extract_first()
-            pcid_url = urljoin(response.url, pcid_href)
-            cid1_div_list = div.xpath('./following-sibling::div[@class="_7178"][1]/div/div[@class="_717a"]')
-            # cid*都是子类
-            if cid1_div_list:
-                # print(pcid, len(cid1_div_list))
-                for cid1_div in cid1_div_list:
-                    cid1 = cid1_div.xpath('string(.)').extract_first()
-                    cid1 = cid1.strip()
-                    cid1_href = cid1_div.xpath('.//a/@href').extract_first()
-                    cid1_url = urljoin(response.url, cid1_href)
-                    yield scrapy.Request(cid1_url, callback = self.parse_com)
-                    cid2_div_list = cid1_div.xpath('./following-sibling::div[@class="_7178"][1]/div/div[@class="_717a"]')
-                    if cid2_div_list:
-                        # print(pcid, cid1, len(cid2_div_list))
-                        for cid2_div in cid2_div_list:
-                            cid2 = cid2_div.xpath('string(.)').extract_first()
-                            cid2 = cid2.strip()
-                            cid2_href = cid2_div.xpath('.//a/@href').extract_first()
-                            cid2_url = urljoin(response.url, cid2_href)
-                            yield scrapy.Request(cid2_url, callback = self.parse_com)
-                            cid3_div_list = cid2_div.xpath('./following-sibling::div[@class="_7178"][1]/div/div[@class="_717a"]')
-                            if cid3_div_list:
-                                # print(pcid, cid1, cid2, len(cid3_div_list))
-                                for cid3_div in cid3_div_list:
-                                    cid3 = cid3_div.xpath('string(.)').extract_first()
-                                    cid3 = cid3.strip()
-                                    cid3_href = cid3_div.xpath('.//a/@href').extract_first()
-                                    cid3_url = urljoin(response.url, cid3_href)
-                                    yield scrapy.Request(cid3_url, callback = self.parse_com)
-                                    cid4_div_list = cid3_div.xpath('./following-sibling::div[@class="_7178"][1]/div/div[@class="_717a"]')
-                                    if cid4_div_list:
-                                        # print(pcid, cid1, cid2, cid3, len(cid4_div_list))
-                                        for cid4_div in cid4_div_list:
-                                            cid4 = cid4_div.xpath('string(.)').extract_first()
-                                            cid4 = cid4.strip()
-                                            cid4_href = cid4_div.xpath('.//a/@href').extract_first()
-                                            cid4_url = urljoin(response.url, cid4_href)
-                                            yield scrapy.Request(cid4_url, callback = self.parse_com)
-                                            cid5_div_list = cid4_div.xpath('./following-sibling::div[@class="_7178"][1]/div/div[@class="_717a"]')
-                                            if cid5_div_list:
-                                                # print(pcid, cid1, cid2, cid3, cid4, len(cid5_div_list))
-                                                for cid5_div in cid5_div_list:
-                                                    cid5 = cid5_div.xpath('string(.)').extract_first()
-                                                    cid5 = cid5.strip()
-                                                    cid5_href = cid5_div.xpath('.//a/@href').extract_first()
-                                                    cid5_url = urljoin(response.url, cid5_href)
-                                                    yield scrapy.Request(cid5_url, callback = self.parse_com)
-
-    # 爬取公司详情url
-    def parse_com(self, response):
-        coms = re.findall(r'<a class=\"_6x0d\" href=\"(.*?)\"', response.text)
-        if coms:
-            print('coms:', len(coms), response.url)
-            for com in coms:
-                com = urljoin(response.url, com)
-                self.redis_server.sadd(REDIS_KEY, com)
-
-        next_url = re.findall(r'<link rel=\"next\" href=\"(.*?)\"',response.text)
-        if next_url:
-            next_url = urljoin(response.url, next_url[0])
-            print('next_url:', next_url)
-            yield scrapy.Request(next_url, callback = self.parse_com)
-
 
     # 爬取公司facebook首页，获取about页面链接
     def parse(self, response):
@@ -219,13 +160,6 @@ class InfoFromFacebookSpider(scrapy.Spider):
         # print(item)
         yield item
 
-        # 爬取url
-        start_urls = 'https://www.facebook.com/pages/category/'
-        url_num = self.redis_server.scard(REDIS_KEY)
-        if url_num < 100000:
-            print('######## 详情url少于100000条，开始爬取详情url')
-            yield scrapy.Request(start_urls, callback = self.parse_cat)
-
     # 匹配邮箱字段
     def match_email(self, response):
         """
@@ -256,3 +190,73 @@ class InfoFromFacebookSpider(scrapy.Spider):
                     else:
                         new_email_set.add(email)
         return list(new_email_set)
+
+    #爬取分类url
+    def parse_cat(self, response):
+        div_list = response.xpath('//h1[text()="All Categories"]/following-sibling::div/div[@class="_717a"]')
+        for div in div_list:
+            pcid = div.xpath('string(.)').extract_first()
+            pcid = pcid.strip()
+            pcid_href = div.xpath('.//a/@href').extract_first()
+            pcid_url = urljoin(response.url, pcid_href)
+            cid1_div_list = div.xpath('./following-sibling::div[@class="_7178"][1]/div/div[@class="_717a"]')
+            # cid*都是子类
+            if cid1_div_list:
+                # print(pcid, len(cid1_div_list))
+                for cid1_div in cid1_div_list:
+                    cid1 = cid1_div.xpath('string(.)').extract_first()
+                    cid1 = cid1.strip()
+                    cid1_href = cid1_div.xpath('.//a/@href').extract_first()
+                    cid1_url = urljoin(response.url, cid1_href)
+                    self.redis_server.sadd(REDIS_KEY_CAT, cid1_url)
+                    cid2_div_list = cid1_div.xpath('./following-sibling::div[@class="_7178"][1]/div/div[@class="_717a"]')
+                    if cid2_div_list:
+                        # print(pcid, cid1, len(cid2_div_list))
+                        for cid2_div in cid2_div_list:
+                            cid2 = cid2_div.xpath('string(.)').extract_first()
+                            cid2 = cid2.strip()
+                            cid2_href = cid2_div.xpath('.//a/@href').extract_first()
+                            cid2_url = urljoin(response.url, cid2_href)
+                            self.redis_server.sadd(REDIS_KEY_CAT, cid2_url)
+                            cid3_div_list = cid2_div.xpath('./following-sibling::div[@class="_7178"][1]/div/div[@class="_717a"]')
+                            if cid3_div_list:
+                                # print(pcid, cid1, cid2, len(cid3_div_list))
+                                for cid3_div in cid3_div_list:
+                                    cid3 = cid3_div.xpath('string(.)').extract_first()
+                                    cid3 = cid3.strip()
+                                    cid3_href = cid3_div.xpath('.//a/@href').extract_first()
+                                    cid3_url = urljoin(response.url, cid3_href)
+                                    self.redis_server.sadd(REDIS_KEY_CAT, cid3_url)
+                                    cid4_div_list = cid3_div.xpath('./following-sibling::div[@class="_7178"][1]/div/div[@class="_717a"]')
+                                    if cid4_div_list:
+                                        # print(pcid, cid1, cid2, cid3, len(cid4_div_list))
+                                        for cid4_div in cid4_div_list:
+                                            cid4 = cid4_div.xpath('string(.)').extract_first()
+                                            cid4 = cid4.strip()
+                                            cid4_href = cid4_div.xpath('.//a/@href').extract_first()
+                                            cid4_url = urljoin(response.url, cid4_href)
+                                            self.redis_server.sadd(REDIS_KEY_CAT, cid4_url)
+                                            cid5_div_list = cid4_div.xpath('./following-sibling::div[@class="_7178"][1]/div/div[@class="_717a"]')
+                                            if cid5_div_list:
+                                                # print(pcid, cid1, cid2, cid3, cid4, len(cid5_div_list))
+                                                for cid5_div in cid5_div_list:
+                                                    cid5 = cid5_div.xpath('string(.)').extract_first()
+                                                    cid5 = cid5.strip()
+                                                    cid5_href = cid5_div.xpath('.//a/@href').extract_first()
+                                                    cid5_url = urljoin(response.url, cid5_href)
+                                                    self.redis_server.sadd(REDIS_KEY_CAT, cid5_url)
+
+    # 爬取公司详情url
+    def parse_com(self, response):
+        coms = re.findall(r'<a class=\"_6x0d\" href=\"(.*?)\"', response.text)
+        if coms:
+            print('coms:', len(coms), response.url)
+            for com in coms:
+                com = urljoin(response.url, com)
+                self.redis_server.sadd(REDIS_KEY, com)
+
+        next_url = re.findall(r'<link rel=\"next\" href=\"(.*?)\"',response.text)
+        if next_url:
+            next_url = urljoin(response.url, next_url[0])
+            print('next_url:', next_url)
+            yield scrapy.Request(next_url, callback = self.parse_com)
